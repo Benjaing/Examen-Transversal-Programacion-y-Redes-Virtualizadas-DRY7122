@@ -1,88 +1,79 @@
-import math
+import requests
 
-ciudades = {
-    "santiago": (-33.4489, -70.6693),
-    "valparaiso": (-33.0472, -71.6127),
-    "concepcion": (-36.8201, -73.0444),
-    "temuco": (-38.7359, -72.5904),
-    "buenos aires": (-34.6037, -58.3816),
-    "córdoba": (-31.4167, -64.1833),
-    "mendoza": (-32.8908, -68.8272),
-    "rosario": (-32.9468, -60.6393)
-}
+API_KEY = '266e2bdf-660a-4237-810f-0bd4eafd9d40' 
 
-def calcular_distancia(coord1, coord2):
-    R = 6371 
-    lat1, lon1 = map(math.radians, coord1)
-    lat2, lon2 = map(math.radians, coord2)
-
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-
-    a = math.sin(dlat/2)**2 + math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    distancia_km = R * c
-    distancia_mi = distancia_km * 0.621371
-    return distancia_km, distancia_mi
-
-def estimar_duracion(distancia_km, medio):
-    velocidades = {
-        "auto": 80,
-        "bicicleta": 15,
-        "a pie": 5
+def geocodificar(ciudad):
+    url = 'https://graphhopper.com/api/1/geocode'
+    params = {
+        'q': ciudad,
+        'locale': 'es',
+        'limit': 1,
+        'key': API_KEY
     }
-    velocidad = velocidades.get(medio, 50)
-    duracion_horas = distancia_km / velocidad
-    horas = int(duracion_horas)
-    minutos = int((duracion_horas - horas) * 60)
-    return horas, minutos
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        resultados = response.json()['hits']
+        if resultados:
+            lat = resultados[0]['point']['lat']
+            lon = resultados[0]['point']['lng']
+            return f"{lat},{lon}"
+        else:
+            print(f"No se encontró la ciudad: {ciudad}")
+            return None
+    else:
+        print("Error en la geocodificación:", response.text)
+        return None
+
+def obtener_datos(coord_origen, coord_destino, modo_transporte):
+    url_base = 'https://graphhopper.com/api/1/route'
+    params = {
+        'point': [coord_origen, coord_destino],
+        'vehicle': modo_transporte,
+        'locale': 'es',
+        'calc_points': 'true',
+        'instructions': 'true',
+        'key': API_KEY
+    }
+
+    response = requests.get(url_base, params=params)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Error al contactar GraphHopper:", response.text)
+        return None
+
+def mostrar_resultados(data):
+    distancia_km = data['paths'][0]['distance'] / 1000
+    distancia_mi = distancia_km * 0.621371
+    duracion_seg = data['paths'][0]['time'] / 1000
+    duracion_min = duracion_seg / 60
+    narrativa = data['paths'][0]['instructions']
+
+    print(f"\n Distancia: {distancia_km:.2f} km / {distancia_mi:.2f} millas")
+    print(f" Duración estimada: {duracion_min:.1f} minutos")
+    print("\n Narrativa del viaje:")
+    for paso in narrativa:
+        print(f"- {paso['text']}")
 
 def main():
-    medios = {
-        "1": "auto",
-        "2": "bicicleta",
-        "3": "a pie"
-    }
-
+    print("🚗 Bienvenido al calculador de rutas Chile - Argentina")
     while True:
-        print("\n Calculadora de viaje ")
-        origen = input("Ciudad de Origen (Chile): ").strip().lower()
-        if origen == "s":
+        origen = input("Ingrese la Ciudad de Origen (o 's' para salir): ")
+        if origen.lower() == 's':
             break
-        destino = input("Ciudad de Destino (Argentina): ").strip().lower()
-        if destino == "s":
+        destino = input("Ingrese la Ciudad de Destino (o 's' para salir): ")
+        if destino.lower() == 's':
             break
+        print("Medios de transporte disponibles: car, bike, foot, scooter, etc.")
+        transporte = input("Ingrese el medio de transporte: ")
 
-        if origen not in ciudades or destino not in ciudades:
-            print(" Una o ambas ciudades no están en la base local.")
-            continue
+        coord_origen = geocodificar(origen)
+        coord_destino = geocodificar(destino)
 
-        print("\nSelecciona medio de transporte:")
-        print("1. Auto\n2. Bicicleta\n3. A pie")
-        medio_op = input("Opción: ").strip().lower()
-        if medio_op == "s":
-            break
+        if coord_origen and coord_destino:
+            datos = obtener_datos(coord_origen, coord_destino, transporte)
+            if datos:
+                mostrar_resultados(datos)
 
-        medio = medios.get(medio_op)
-        if not medio:
-            print(" Opción inválida.")
-            continue
-
-        coord_origen = ciudades[origen]
-        coord_destino = ciudades[destino]
-
-        distancia_km, distancia_mi = calcular_distancia(coord_origen, coord_destino)
-        horas, minutos = estimar_duracion(distancia_km, medio)
-
-        print(f"\n Resultado del viaje en {medio.upper()}:")
-        print(f"Distancia: {distancia_km:.2f} km / {distancia_mi:.2f} millas")
-        print(f"Duración estimada: {horas} horas y {minutos} minutos")
-        print(f" Narrativa: Desde {origen.title()} hasta {destino.title()} en {medio}, "
-              f"recorrerás unos {distancia_km:.2f} km en aproximadamente {horas}h {minutos}min.")
-
-        continuar = input("\n¿Deseas calcular otro viaje? (presiona 's' para salir): ").lower()
-        if continuar == "s":
-            break
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": 
+        main()
